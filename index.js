@@ -1,16 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
 import MistralClient from '@mistralai/mistralai';
 import { createClient } from "@supabase/supabase-js";
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import dotenv from 'dotenv';
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 
 dotenv.config();
 
-const { MISTRAL_API_KEY, SUPABASE_URL, SUPABASE_API_KEY } = process.env;
-
-const mistral = new MistralClient(MISTRAL_API_KEY || '');
-const supabase = createClient(SUPABASE_URL, SUPABASE_API_KEY);
+const mistalClient = new MistralClient(process.env.MISTRAL_API_KEY);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_API_KEY);
 
 export async function splitDocument(pathToFile) {
     const filePath = path.join(process.cwd(), pathToFile);
@@ -30,11 +28,10 @@ export async function splitDocument(pathToFile) {
     }
   }
 
-const handbookChunking = await splitDocument('example_handbook.txt');
-
+const handbookChunks = await splitDocument('example_handbook.txt');
 
 async function createEmbeddings(chunks) {
-    const embeddings = await mistral.embeddings({
+    const embeddings = await mistalClient.embeddings({
         model: 'mistral-embed',
         input: chunks
     });
@@ -47,11 +44,8 @@ async function createEmbeddings(chunks) {
     return data;
 }
 
-const data = createEmbeddings(handbookChunking);
+const data = await createEmbeddings(handbookChunks);
+await supabase.from('handbook_docs').insert(data);
+console.log("Upload complete!");
 
-try{
-    await supabase.from('handbook_docs').insert(data);
-    console.log('success')
-} catch(err) {
-    console.log('something went wrong', err);
-}
+
