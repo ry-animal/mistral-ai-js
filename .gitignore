@@ -1,1 +1,13 @@
 .env
+*.js.map
+*.min.js
+*.bundle.js
+*.tmp
+*.lock
+*.cache
+.DS_Store
+*.swp
+*.swo
+dist/
+build/
+public/
