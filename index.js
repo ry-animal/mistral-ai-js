@@ -1,14 +1,47 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
+import fs from 'fs';
+import path from 'path';
 import MistralClient from '@mistralai/mistralai';
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import dotenv from 'dotenv';
 
-const apiKey = process.env.MISTRAL_API_KEY || '';
-const client = new MistralClient(apiKey);
+dotenv.config();
+const client = new MistralClient(process.env.MISTRAL_API_KEY || '');
 
-const chatResponse = await client.chat({
-    model: "mistral-tiny",
-    messages: [{role: 'user', content: 'ASK Q HERE'}]
-});
+export async function splitDocument(pathToFile) {
+    const filePath = path.join(process.cwd(), pathToFile);
+  
+    try {
+      const text = await fs.promises.readFile(filePath, 'utf-8');
+  
+      const splitter = new RecursiveCharacterTextSplitter({
+        chunkSize: 250,
+        chunkOverlap: 40
+      });
+  
+      const output = await splitter.createDocuments([text]);
+      return output.map(chunk => chunk.pageContent);
+    } catch (error) {
+      console.error('Error reading file:', error);
+    }
+  }
 
-console.log(chatResponse.choices[0].message.content);
+const handbookChunking = await splitDocument('example_handbook.txt');
+
+
+async function createEmbeddings(chunks) {
+    const embeddings = await client.embeddings({
+        model: 'mistral-embed',
+        input: chunks
+    });
+    const data = chunks.map((chunk, i) => {
+        return {
+            content: chunk,
+            embedding: embeddings.data[i].embedding
+        }
+    });
+    return data;
+}
+
+//createEmbeddings(handbookChunking);
+
+console.log(await createEmbeddings(handbookChunking))
