@@ -1,51 +1,48 @@
-import fs from 'fs';
-import path from 'path';
+
 import dotenv from 'dotenv';
 import MistralClient from '@mistralai/mistralai';
 import { createClient } from "@supabase/supabase-js";
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 
 dotenv.config();
 
-const mistalClient = new MistralClient(process.env.MISTRAL_API_KEY);
+const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_API_KEY);
 
-export async function splitDocument(pathToFile) {
-    const filePath = path.join(process.cwd(), pathToFile);
-  
-    try {
-      const text = await fs.promises.readFile(filePath, 'utf-8');
-  
-      const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 250,
-        chunkOverlap: 40
-      });
-  
-      const output = await splitter.createDocuments([text]);
-      return output.map(chunk => chunk.pageContent);
-    } catch (error) {
-      console.error('Error reading file:', error);
-    }
-  }
+const input = "December 25th is on a Sunday, do I get any extra time off to account for that?";
 
-const handbookChunks = await splitDocument('example_handbook.txt');
+const embedding = await createEmbedding(input);
 
-async function createEmbeddings(chunks) {
-    const embeddings = await mistalClient.embeddings({
-        model: 'mistral-embed',
-        input: chunks
-    });
-    const data = chunks.map((chunk, i) => {
-        return {
-            content: chunk,
-            embedding: embeddings.data[i].embedding
-        }
-    });
-    return data;
+const context = await retrieveMatches(embedding);
+
+const response = await generateChatResponse(context, input);
+console.log(response);
+
+async function createEmbedding(input) {
+  const embeddingResponse = await mistral.embeddings({
+      model: 'mistral-embed',
+      input: [input]
+  });
+  return embeddingResponse.data[0].embedding;
 }
 
-const data = await createEmbeddings(handbookChunks);
-await supabase.from('handbook_docs').insert(data);
-console.log("Upload complete!");
+async function retrieveMatches(embedding) {
+    const { data } = await supabase.rpc('match_handbook_docs', {
+        query_embedding: embedding,
+        match_threshold: 0.78,
+        match_count: 5
+    });
+
+    return data.map(chunk => chunk.content).join (" ");
+}
 
 
+async function generateChatResponse(context, query) {
+    const response = await mistral.chat({
+        model: 'mistral-tiny',
+        messages: [{
+            role: 'user',
+            content: `Handbook context: ${context} - Question: ${query}`
+        }]
+    });
+    return response.choices[0].message.content;
+}
